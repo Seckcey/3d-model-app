@@ -40,7 +40,9 @@ compose stop proxy api extract-worker scheduler cad-worker
 log "Moving current files to $aside"
 mkdir -p "$aside"
 for part in files outbox; do
-  [ -e "$DATA_DIR/$part" ] && mv "$DATA_DIR/$part" "$aside/$part"
+  if [ -e "$DATA_DIR/$part" ]; then
+    mv "$DATA_DIR/$part" "$aside/$part"
+  fi
 done
 log "Saving a dump of the current database to $aside/db-before-restore.dump"
 compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner \
