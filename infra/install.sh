@@ -41,7 +41,8 @@ green() { printf '\033[1;32m✔\033[0m %s\n' "$*"; }
 yellow() { printf '\033[1;33m!\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 
-can_prompt() { [ "$ASSUME_YES" -eq 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; }
+# A terminal must actually open (the device node exists even without one).
+can_prompt() { [ "$ASSUME_YES" -eq 0 ] && { : > /dev/tty; } 2>/dev/null; }
 ask() {  # ask "Question" "default" -> echoes answer
   local question="$1" default="${2:-}" reply=""
   if can_prompt; then

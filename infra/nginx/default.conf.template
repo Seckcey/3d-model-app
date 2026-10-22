@@ -57,11 +57,11 @@ server {
     }
 
     # Authenticated downloads: Django checks access, then hands the file to nginx.
+    # nginx keeps Django's Content-Type, Content-Disposition and Cache-Control
+    # (no-store for drawings and exports, a short private cache for previews).
     location /_protected/ {
         internal;
         alias /data/files/;
-        include /etc/nginx/snippets/security-headers.conf;
-        add_header Cache-Control "private, no-store" always;
     }
 
     location /assets/ {

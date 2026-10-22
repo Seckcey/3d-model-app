@@ -58,6 +58,15 @@ def test_verify_storage_detects_tampering(shop_a, capsys):
     call_command("verify_storage")
     assert json.loads(capsys.readouterr().out)["ok"] is True
 
+    call_command("verify_storage", counts_only=True, compact=True)
+    recorded = capsys.readouterr().out.strip()
+    assert "\n" not in recorded and json.loads(recorded)["counts"]["source_files"] == 1
+    call_command("verify_storage", expect=recorded)  # a restore with the same data passes
+    capsys.readouterr()
+    with pytest.raises(SystemExit):  # fewer rows than the backup recorded fails
+        call_command("verify_storage", expect=json.dumps({"source_files": 2}))
+    assert json.loads(capsys.readouterr().out)["below_expected"]["source_files"]["actual"] == 1
+
     path = storage.absolute(SourceFile.objects.get().storage_path)
     path.chmod(0o640)
     path.write_bytes(b"tampered")

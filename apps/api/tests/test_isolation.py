@@ -112,6 +112,15 @@ def test_project_in_own_shop_cannot_reference_foreign_customer(shop_a, shop_b):
     assert response.status_code == 400
 
 
+def test_malformed_ids_in_filters_match_nothing(shop_a):
+    client = shop_a["client"]
+    assert client.get("/api/v1/jobs/?revision=not-a-uuid").json()["count"] == 0
+    assert client.get("/api/v1/projects/?organization=../../etc").json()["count"] == 0
+    assert client.get("/api/v1/parts/?project=1%20OR%201=1").json()["count"] == 0
+    assert client.get("/api/v1/artifacts/?job=abc").json() == []
+    assert client.get("/api/v1/jobs/not-a-uuid/").status_code == 404
+
+
 def test_anonymous_requests_are_rejected(shop_a):
     from rest_framework.test import APIClient
 
