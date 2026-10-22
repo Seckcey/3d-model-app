@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Local runtime data (never commit customer drawings or secrets)
+apps/api/var/
+data/
+*.sqlite3
+.env
+.env.*
+!.env.example
+infra/compose/.env
+celerybeat-schedule*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
