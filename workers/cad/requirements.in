@@ -1,0 +1,5 @@
+# Geometry worker runtime. Compile with:
+#   uv pip compile requirements.in --python-platform x86_64-manylinux_2_31 --python-version 3.12 --generate-hashes -o requirements.txt
+cadquery==2.8.0
+jsonschema>=4.23,<5
+celery[redis]>=5.5,<5.7

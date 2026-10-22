@@ -1,0 +1,225 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Explicit bash = '-eo pipefail', so a failing command piped into tee fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  api:
+    name: API tests (PostgreSQL)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bpcad
+          POSTGRES_USER: bpcad
+          POSTGRES_PASSWORD: ci-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bpcad" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: valkey/valkey:8.1-alpine
+        ports: ["6379:6379"]
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: bpcad
+      POSTGRES_USER: bpcad
+      POSTGRES_PASSWORD: ci-password
+      REDIS_URL: redis://localhost:6379/0
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements*.txt
+      - run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: DJANGO_DEBUG=1 python manage.py makemigrations --check --dry-run
+      - run: python -m pytest
+
+  web:
+    name: Web typecheck, tests and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  cad:
+    name: Geometry engine tests (CadQuery image)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/cad.Dockerfile
+          tags: bpcad-cad:ci
+          load: true
+          cache-from: type=gha,scope=cad
+          cache-to: type=gha,scope=cad,mode=max
+      - name: Run geometry tests inside the worker image
+        run: |
+          docker run --rm --user root -v "$PWD:/repo" -w /repo/workers/cad bpcad-cad:ci \
+            sh -c "pip install --no-cache-dir pytest==9.1.1 >/dev/null && python -m pytest tests"
+
+  e2e:
+    name: Full stack (Compose) - isolation, restart, backup and restore drill
+    needs: [api, web, cad]
+    runs-on: ubuntu-24.04
+    env:
+      INSTALL_DIR: /tmp/bpcad
+      ENV_FILE: /tmp/bpcad/.env
+      APP_DIR: ${{ github.workspace }}
+      COMPOSE_PROJECT_NAME: bpcad
+      PUBLIC_URL: https://3d.example.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          tags: bpcad-local/api:ci
+          load: true
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          tags: bpcad-local/web:ci
+          load: true
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - name: Build CAD image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/cad.Dockerfile
+          tags: bpcad-local/cad:ci
+          load: true
+          cache-from: type=gha,scope=cad
+      - name: Configure deployment
+        run: |
+          sudo mkdir -p /tmp/bpcad/data
+          sudo tee /tmp/bpcad/.env >/dev/null <<EOF
+          PUBLIC_URL='https://3d.example.test'
+          HTTP_PORT=9999
+          DJANGO_ALLOWED_HOSTS='3d.example.test,localhost,127.0.0.1'
+          DJANGO_SECRET_KEY=$(openssl rand -hex 32)
+          POSTGRES_DB=bpcad
+          POSTGRES_USER=bpcad
+          POSTGRES_PASSWORD=$(openssl rand -hex 16)
+          DATA_DIR=/tmp/bpcad/data
+          IMAGE_REGISTRY=bpcad-local
+          IMAGE_TAG=ci
+          GIT_SHA=${GITHUB_SHA::12}
+          BACKUP_PASSPHRASE_FILE=/tmp/bpcad/passphrase
+          EOF
+          openssl rand -base64 32 | sudo tee /tmp/bpcad/passphrase >/dev/null
+          sudo chmod 600 /tmp/bpcad/.env /tmp/bpcad/passphrase
+          sudo -E bash -c '. infra/scripts/common.sh && prepare_data_dir /tmp/bpcad/data'
+      - name: Start the stack
+        run: |
+          sudo -E bash -c '. infra/scripts/common.sh && load_env && compose up -d && wait_healthy api 300 && wait_healthy proxy 120'
+          curl -fsS http://127.0.0.1:9999/readyz
+          curl -fsS -o /dev/null -w "SPA: %{http_code}\n" http://127.0.0.1:9999/login
+      - name: Create two shops
+        run: |
+          sudo -E bash -c '. infra/scripts/common.sh && load_env &&
+            compose exec -T api python manage.py bootstrap --email owner@ci.test --org "CI Shop" &&
+            compose exec -T api python manage.py bootstrap --email other@ci.test --org "Other Shop"'
+      - name: Smoke test through the proxy
+        run: |
+          sudo -E bash -c '. infra/scripts/common.sh && load_env &&
+            compose run --rm --no-deps -T --volume "$APP_DIR/infra/scripts/smoke.py:/usr/local/share/bpcad-smoke.py:ro" api \
+              python /usr/local/share/bpcad-smoke.py setup --public-url "$PUBLIC_URL" \
+              --email owner@ci.test --other-email other@ci.test' | tee smoke-setup.log
+          grep '^STATE ' smoke-setup.log | sed 's/^STATE //' > smoke-state.json
+      - name: Restart the whole stack and verify data survived
+        run: |
+          export SMOKE_STATE="$(cat smoke-state.json)"
+          sudo -E bash -c '. infra/scripts/common.sh && load_env &&
+            compose down && compose up -d && wait_healthy api 300 && wait_healthy proxy 120 &&
+            compose run --rm --no-deps -T --volume "$APP_DIR/infra/scripts/smoke.py:/usr/local/share/bpcad-smoke.py:ro" api \
+              python /usr/local/share/bpcad-smoke.py verify --public-url "$PUBLIC_URL" --email owner@ci.test \
+              --state "$SMOKE_STATE"'
+      - name: Encrypted backup and isolated restore drill
+        run: |
+          sudo -E bash infra/scripts/backup.sh
+          sudo -E bash infra/scripts/restore-drill.sh
+      - name: Logs on failure
+        if: failure()
+        run: |
+          sudo -E bash -c '. infra/scripts/common.sh && load_env && compose ps -a && compose logs --tail=150'
+
+  publish:
+    name: Publish images to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [api, web, cad]
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: echo "short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/${{ matrix.image }}.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/seckcey/3d-model-app/${{ matrix.image }}:${{ steps.tag.outputs.short }}
+            ghcr.io/seckcey/3d-model-app/${{ matrix.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: GIT_SHA=${{ steps.tag.outputs.short }}
+          cache-from: type=gha,scope=${{ matrix.image }}

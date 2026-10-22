@@ -1,0 +1,198 @@
+# Blueprint to CAD production stack.
+#   docker compose --env-file /opt/blueprint-cad/.env -f infra/compose/docker-compose.yml up -d
+# Only the proxy publishes a port (HTTP_PORT, default 9999). PostgreSQL, Redis
+# and the CAD worker sit on internal networks with no outbound route.
+name: ${COMPOSE_PROJECT_NAME:-bpcad}
+
+x-api-image: &api-image
+  image: ${IMAGE_REGISTRY:-ghcr.io/seckcey/3d-model-app}/api:${IMAGE_TAG:-latest}
+  build:
+    context: ../..
+    dockerfile: infra/docker/api.Dockerfile
+    args:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      GIT_SHA: ${GIT_SHA:-dev}
+
+x-api-env: &api-env
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+  PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-}
+  CSRF_EXTRA_TRUSTED_ORIGINS: ${CSRF_EXTRA_TRUSTED_ORIGINS:-}
+  COOKIE_SECURE: ${COOKIE_SECURE:-}
+  BEHIND_PROXY: "true"
+  USE_X_ACCEL_REDIRECT: "true"
+  POSTGRES_HOST: postgres
+  POSTGRES_DB: ${POSTGRES_DB:-bpcad}
+  POSTGRES_USER: ${POSTGRES_USER:-bpcad}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  REDIS_URL: redis://redis:6379/0
+  SIGNUP_MODE: ${SIGNUP_MODE:-invite_only}
+  EMAIL_HOST: ${EMAIL_HOST:-}
+  EMAIL_PORT: ${EMAIL_PORT:-587}
+  EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+  EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+  EMAIL_USE_TLS: ${EMAIL_USE_TLS:-}
+  EMAIL_USE_SSL: ${EMAIL_USE_SSL:-}
+  DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
+  TIME_ZONE: ${TIME_ZONE:-America/Chicago}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+  MAX_PDF_PAGES: ${MAX_PDF_PAGES:-20}
+  DISK_ALERT_PERCENT: ${DISK_ALERT_PERCENT:-85}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+services:
+  proxy:
+    image: ${IMAGE_REGISTRY:-ghcr.io/seckcey/3d-model-app}/web:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    <<: *hardening
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-9999}:8080"
+    environment:
+      MAX_BODY_MB: ${PROXY_MAX_BODY_MB:-30}
+    volumes:
+      - ${DATA_DIR:-./data}/files:/data/files:ro
+    tmpfs:
+      - /etc/nginx/conf.d
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  api:
+    <<: [*api-image, *hardening]
+    command: ["web"]
+    environment: *api-env
+    volumes:
+      - ${DATA_DIR:-./data}/files:/data/files
+      - ${DATA_DIR:-./data}/outbox:/data/outbox
+    tmpfs:
+      - /tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, core]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=5).status == 200 else 1)"]
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 30s
+
+  extract-worker:
+    <<: [*api-image, *hardening]
+    command: ["worker"]
+    environment:
+      <<: *api-env
+      WORKER_QUEUES: extract,default
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    volumes:
+      - ${DATA_DIR:-./data}/files:/data/files
+      - ${DATA_DIR:-./data}/outbox:/data/outbox
+    tmpfs:
+      - /tmp
+    depends_on:
+      api:
+        condition: service_healthy
+    # "egress" will carry calls to an allow-listed AI endpoint in Phase 2; it also
+    # lets alert emails reach the SMTP relay.
+    networks: [core, egress]
+
+  scheduler:
+    <<: [*api-image, *hardening]
+    command: ["scheduler"]
+    environment: *api-env
+    tmpfs:
+      - /tmp
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [core]
+
+  cad-worker:
+    image: ${IMAGE_REGISTRY:-ghcr.io/seckcey/3d-model-app}/cad:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/cad.Dockerfile
+    <<: *hardening
+    cap_drop: [ALL]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      STAGING_ROOT: /data/staging
+    volumes:
+      - ${DATA_DIR:-./data}/files/staging:/data/staging
+    tmpfs:
+      - /tmp
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [cad]
+    deploy:
+      resources:
+        limits:
+          memory: ${CAD_MEMORY_LIMIT:-4g}
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bpcad}
+      POSTGRES_USER: ${POSTGRES_USER:-bpcad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+    networks: [core]
+    shm_size: 256mb
+    healthcheck:
+      # TCP, not the socket: first-time init runs a temporary socket-only server.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["valkey-server", "--appendonly", "yes", "--save", "300 1"]
+    volumes:
+      - ${DATA_DIR:-./data}/redis:/data
+    networks: [core, cad]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  edge: {}
+  egress: {}
+  core:
+    internal: true
+  cad:
+    internal: true

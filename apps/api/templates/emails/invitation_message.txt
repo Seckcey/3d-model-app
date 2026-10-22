@@ -1,0 +1,13 @@
+{% autoescape off %}{{ inviter }} invited you to join the {{ organization }} workspace on {{ product_name }} as: {{ roles }}.
+
+Accept the invitation here:
+
+    {{ link }}
+
+You will sign in with a one-time code sent to this address; there is no password. The link expires on {{ expires_at|date:"N j, Y" }}.
+
+If you were not expecting this invitation, you can ignore it.
+
+--
+{{ product_name }}
+{% endautoescape %}

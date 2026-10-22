@@ -1,0 +1,22 @@
+[project]
+name = "blueprint-cad-api"
+version = "0.1.0"
+description = "Web API, job orchestration and drawing intake for Blueprint to CAD"
+requires-python = ">=3.12"
+# Runtime dependencies are pinned in requirements.txt (compiled from requirements.in).
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning:celery.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "DJ"]
+ignore = ["E501", "DJ001"]

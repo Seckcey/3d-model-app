@@ -1,0 +1,38 @@
+{
+  "schema": "feature-spec/1",
+  "family": "turned",
+  "part": {"number": "BENCH-SHAFT-03", "revision": "A", "name": "Stepped shaft"},
+  "source": {"kind": "benchmark", "note": "Synthetic Phase 0 reference part; not a customer drawing."},
+  "units": "in",
+  "projection": "third_angle",
+  "material": {"designation": "303 stainless steel", "density_g_cm3": 8.00},
+  "datums": {"A": "shaft axis", "B": "bottom end face"},
+  "dimensions": {
+    "D1": {"nominal": 0.7500, "upper": -0.0005, "lower": -0.0015, "kind": "diameter", "text": "Ø.7500 -.0005/-.0015", "tolerance_source": "explicit", "critical": true},
+    "D2": {"nominal": 1.000, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": "1.000", "tolerance_source": "title_block"},
+    "D3": {"nominal": 1.0000, "upper": 0.0010, "lower": -0.0010, "kind": "diameter", "text": "Ø1.0000 ±.0010", "tolerance_source": "explicit"},
+    "D4": {"nominal": 2.000, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": "2.000", "tolerance_source": "title_block"},
+    "D5": {"nominal": 0.6250, "upper": 0.0, "lower": -0.0010, "kind": "diameter", "text": "Ø.6250 +.0000/-.0010", "tolerance_source": "explicit", "critical": true},
+    "D6": {"nominal": 1.500, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": "1.500", "tolerance_source": "title_block"},
+    "D7": {"nominal": 0.046, "upper": 0.003, "lower": 0.0, "kind": "linear", "text": "GROOVE .046 +.003/-.000", "tolerance_source": "explicit"},
+    "D8": {"nominal": 0.940, "upper": 0.002, "lower": -0.002, "kind": "diameter", "text": "Ø.940 ±.002 GROOVE ROOT", "tolerance_source": "explicit"},
+    "D9": {"nominal": 0.2500, "upper": 0.0010, "lower": -0.0010, "kind": "diameter", "text": "Ø.2500 ±.0010 THRU", "tolerance_source": "explicit"},
+    "D10": {"nominal": 0.030, "upper": 0.010, "lower": -0.010, "kind": "chamfer", "text": "2X .030 X 45°", "tolerance_source": "title_block"}
+  },
+  "features": [
+    {"id": "F1", "type": "turned_profile", "segments": [
+      {"diameter": {"dim": "D1"}, "length": {"dim": "D2"}},
+      {"diameter": {"dim": "D3"}, "length": {"dim": "D4"}},
+      {"diameter": {"dim": "D5"}, "length": {"dim": "D6"}}
+    ], "dims": ["D1", "D2", "D3", "D4", "D5", "D6"]},
+    {"id": "C1", "type": "end_chamfer", "end": "bottom", "size": {"dim": "D10"}, "dims": ["D10"]},
+    {"id": "C2", "type": "end_chamfer", "end": "top", "size": {"dim": "D10"}, "dims": ["D10"]},
+    {"id": "G1", "type": "groove", "z": 2.700, "width": {"dim": "D7"}, "root_diameter": {"dim": "D8"}, "dims": ["D7", "D8"]},
+    {"id": "X1", "type": "cross_hole", "z": 0.500, "axis": "x", "diameter": {"dim": "D9"}, "hole_type": "drilled", "dims": ["D9"]},
+    {"id": "H1", "type": "hole", "face": "end_top", "hole_type": "tapped", "positions": [[0, 0]],
+     "diameter": 0.201, "depth": 0.60, "point_angle": 118,
+     "thread": {"callout": "1/4-20 UNC-2B ↧ .50", "major": 0.250, "minor": 0.196, "tap_drill": 0.201, "form_tap_drill": 0.228, "depth": 0.50}}
+  ],
+  "notes": ["Ring groove for 1.000 shaft retaining ring"],
+  "expect": {"bbox": [1.0, 1.0, 4.5], "solids": 1, "volume": 2.410710, "assumes": {"variant": "nominal", "tapped_hole_model": "tap_drill"}}
+}

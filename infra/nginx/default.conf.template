@@ -1,0 +1,80 @@
+# Blueprint to CAD front door. TLS terminates at Cloudflare; cloudflared
+# forwards to this server on the VM's port 9999 (container port 8080).
+# ${MAX_BODY_MB} is filled in by the nginx image's envsubst at start-up.
+
+# Trust the client address Cloudflare reports when the request comes from a
+# private network (cloudflared on the host or LAN).
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;
+set_real_ip_from 192.168.0.0/16;
+set_real_ip_from 127.0.0.0/8;
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+upstream django {
+    server api:8000;
+    keepalive 16;
+}
+
+server {
+    listen 8080 default_server;
+    server_name _;
+    server_tokens off;
+    client_max_body_size ${MAX_BODY_MB}m;
+    client_body_buffer_size 1m;
+    root /usr/share/nginx/html;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location ~ ^/(api|_allauth|admin|static)/ {
+        proxy_pass http://django;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Client-IP $remote_addr;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_request_buffering on;
+    }
+
+    location ~ ^/(healthz|readyz)$ {
+        proxy_pass http://django;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # Authenticated downloads: Django checks access, then hands the file to nginx.
+    # nginx keeps Django's Content-Type, Content-Disposition and Cache-Control
+    # (no-store for drawings and exports, a short private cache for previews).
+    location /_protected/ {
+        internal;
+        alias /data/files/;
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location / {
+        try_files $uri /index.html;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        # No third-party origins: the app loads nothing from CDNs and sends no telemetry.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+}

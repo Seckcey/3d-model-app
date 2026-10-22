@@ -1,0 +1,4 @@
+{% extends "account/email/base_message.txt" %}
+{% block content %}{% autoescape off %}Someone tried to create an account for {{ email }}, but this address already has one. Sign in with an email code at {{ public_url }}/login instead.
+
+If this was not you, you can ignore this message.{% endautoescape %}{% endblock content %}
