@@ -23,9 +23,16 @@ RUN pip install --require-hashes -r /tmp/requirements.txt && rm /tmp/requirement
 
 COPY workers/cad/cadworker /worker/cadworker
 COPY packages/feature-spec/schema /worker/cadworker/schema
-RUN python -c "import cadquery, OCP; print('cadquery', cadquery.__version__, 'ocp', OCP.__version__)"
+COPY packages/feature-spec/examples /worker/examples
 
 ENV STAGING_ROOT=/data/staging
 USER cad
+# Build-time self-test as the runtime user from the installed layout: the worker
+# must import and build a reference part, or the image is not produced.
+RUN STAGING_ROOT=/tmp/selftest python -c "import json, uuid; from cadworker import tasks; \
+r = tasks.run(str(uuid.uuid4()), [json.load(open('/worker/examples/bracket-block.json'))], {}); \
+assert r['ok'] and all(p['validation']['passed'] for p in r['parts']), r; \
+print('cad self-test passed', r['engine'])" \
+ && rm -rf /tmp/selftest
 CMD ["celery", "-A", "cadworker.celery_app", "worker", "--queues", "cad", "--concurrency", "1", \
      "--hostname", "cad@%h", "--max-tasks-per-child", "20", "--loglevel", "INFO"]

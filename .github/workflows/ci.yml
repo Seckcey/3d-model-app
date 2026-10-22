@@ -13,6 +13,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Explicit bash = '-eo pipefail', so a failing command piped into tee fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   api:
     name: API tests (PostgreSQL)
@@ -38,6 +43,7 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
     defaults:
       run:
+        shell: bash
         working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
+        shell: bash
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v4

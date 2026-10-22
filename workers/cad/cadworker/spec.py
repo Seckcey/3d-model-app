@@ -17,10 +17,12 @@ from pathlib import Path
 
 import jsonschema
 
-SCHEMA_PATHS = [
-    Path(__file__).resolve().parent / "schema" / "feature-spec-1.schema.json",
-    Path(__file__).resolve().parents[3] / "packages" / "feature-spec" / "schema" / "feature-spec-1.schema.json",
-]
+_HERE = Path(__file__).resolve().parent
+# The image copies the schema next to this package; a repo checkout keeps it in
+# packages/feature-spec. The image path is shallow, so never index parents blindly.
+SCHEMA_PATHS = [_HERE / "schema" / "feature-spec-1.schema.json"]
+if len(_HERE.parents) >= 3:
+    SCHEMA_PATHS.append(_HERE.parents[2] / "packages" / "feature-spec" / "schema" / "feature-spec-1.schema.json")
 VARIANTS = ("nominal", "mid_tolerance")
 MAX_LENGTH = {"in": 120.0, "mm": 3000.0}
 MM_PER = {"in": 25.4, "mm": 1.0}
