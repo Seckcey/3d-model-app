@@ -21,8 +21,13 @@ drill_env="$drill/drill.env"
 LIVE_ENV_FILE="$ENV_FILE"
 LIVE_PROJECT="$COMPOSE_PROJECT_NAME"
 
+# Compose lets shell variables override --env-file, and load_env exported the
+# live settings (DATA_DIR above all). Run the drill with a clean environment so
+# only drill.env applies; otherwise its containers would mount the live data.
 drill_compose() {
-  docker compose --project-name "$project" --env-file "$drill_env" \
+  env -i PATH="$PATH" HOME="${HOME:-/root}" \
+    ${DOCKER_HOST:+DOCKER_HOST="$DOCKER_HOST"} ${DOCKER_CONFIG:+DOCKER_CONFIG="$DOCKER_CONFIG"} \
+    docker compose --project-name "$project" --env-file "$drill_env" \
     -f "$APP_DIR/infra/compose/docker-compose.yml" "$@"
 }
 live_compose() {
@@ -69,12 +74,27 @@ grep -v -E '^(DATA_DIR|COMPOSE_PROJECT_NAME|HTTP_PORT|POSTGRES_PASSWORD|DJANGO_S
   echo "DJANGO_SECRET_KEY=$(openssl rand -hex 32)"
 } >> "$drill_env"
 
+# Refuse to continue unless every data path resolves inside the drill directory.
+config="$(drill_compose config 2>/dev/null || true)"
+if ! grep -q "source: $drill/data/postgres" <<<"$config" \
+   || grep -E "source: $DATA_DIR/(postgres|files|outbox|redis)" <<<"$config" >/dev/null; then
+  detail="drill stack was not isolated from live data; nothing was started"
+  exit 1
+fi
+
 log "Starting isolated database"
 drill_compose up -d postgres redis >/dev/null
-for _ in $(seq 1 60); do
-  if drill_compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then break; fi
+# TCP readiness: during first-time initialisation the image runs a temporary
+# socket-only server, which a socket check would wrongly report as ready.
+ready=0
+for _ in $(seq 1 90); do
+  if drill_compose exec -T postgres pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
   sleep 2
 done
+[ "$ready" -eq 1 ] || { detail="isolated database did not start"; exit 1; }
 
 log "Restoring database"
 if ! drill_compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --exit-on-error \
