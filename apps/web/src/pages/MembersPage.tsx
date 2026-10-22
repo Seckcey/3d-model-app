@@ -140,7 +140,7 @@ export function MembersPage() {
       </Card>
 
       {can("manage") && (
-        <div className="grid-2">
+        <div className="stack">
           <Card title="Invite someone" subtitle="They receive a link and sign in with an emailed code.">
             <form className="stack" onSubmit={invite}>
               <Field label="Email address">
