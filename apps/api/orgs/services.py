@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import transaction
@@ -12,6 +14,7 @@ from core import audit
 
 from .models import ROLE_VALUES, Invitation, Membership, Organization, Role, hash_token
 
+logger = logging.getLogger("bpcad.orgs")
 SESSION_INVITATION_KEY = "bpcad_invitation_token"
 
 
@@ -60,7 +63,13 @@ def send_invitation_email(invitation: Invitation, token: str) -> None:
     }
     subject = render_to_string("emails/invitation_subject.txt", context).strip()
     body = render_to_string("emails/invitation_message.txt", context)
-    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [invitation.email])
+    try:
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [invitation.email])
+    except Exception:  # noqa: BLE001 - the invitation exists; the owner can resend
+        logger.exception("invitation email to %s failed", invitation.email)
+        audit.record("invitation.email_failed", organization=invitation.organization,
+                     target=invitation, email=invitation.email)
+        return
     invitation.last_sent_at = timezone.now()
     invitation.save(update_fields=["last_sent_at", "updated_at"])
 

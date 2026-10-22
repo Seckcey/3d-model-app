@@ -80,7 +80,7 @@ class PartSerializer(serializers.ModelSerializer):
                             "customer_name", "latest_revision"]
 
     def get_latest_revision(self, obj):
-        revision = obj.revisions.order_by("-sequence").first()
+        revision = max(obj.revisions.all(), key=lambda r: r.sequence, default=None)
         if revision is None:
             return None
         return {"id": str(revision.pk), "drawing_revision": revision.drawing_revision,

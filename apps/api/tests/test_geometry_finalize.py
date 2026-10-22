@@ -94,3 +94,18 @@ def test_engine_crash_is_retried(running_job, _no_dispatch):
                                               "retryable": True}}, str(job.pk), worker)
     job.refresh_from_db()
     assert job.state == Job.State.QUEUED and job.attempts == 1
+
+
+def test_viewers_cannot_download_draft_models(running_job, shop_a):
+    from tests.helpers import add_member, client_for, make_user
+
+    job, worker = running_job
+    entry = stage(job, "part.glb", b"glTF-draft")
+    entry["kind"] = "glb"
+    finalize_geometry(result_with([entry]), str(job.pk), worker)
+    glb = Artifact.objects.get(job=job, kind="glb")
+    viewer = make_user("viewer@shop-a.test")
+    add_member(shop_a["org"], viewer, ["viewer"])
+    url = f"/api/v1/artifacts/{glb.pk}/download/?inline=1"
+    assert client_for(viewer).get(url).status_code == 403
+    assert shop_a["client"].get(url).status_code == 200

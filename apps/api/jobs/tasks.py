@@ -55,6 +55,7 @@ def run_intake(self, job_id: str) -> None:
     if job is None:
         return
     result = None
+    published: list[str] = []
     started = time.monotonic()
     try:
         services.heartbeat(job, worker, stage=Job.Stage.EXTRACTING)
@@ -75,6 +76,7 @@ def run_intake(self, job_id: str) -> None:
                     storage_path = storage.publish_copy(
                         path, job.organization_id, area="artifacts", extension=path.suffix
                     )
+                    published.append(storage_path)
                     created.append(Artifact.objects.create(
                         organization_id=job.organization_id,
                         revision=revision,
@@ -131,8 +133,12 @@ def run_intake(self, job_id: str) -> None:
             )
     except services.LeaseLost:
         logger.warning("intake job %s lost its lease; results discarded", job_id)
+        for path in published:  # the rows rolled back; do not leave their files behind
+            storage.remove(path)
     except Exception as exc:  # noqa: BLE001
         logger.exception("intake job %s failed", job_id)
+        for path in published:
+            storage.remove(path)
         services.fail_or_retry(
             job, worker, error_code="intake_error",
             message=f"The drawing could not be analysed ({type(exc).__name__}).",

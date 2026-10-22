@@ -70,7 +70,11 @@ class RevisionJobsView(APIView):
         target = request.data.get("target")
         if target != Job.Kind.INTAKE_CHECK:
             raise ValidationError({"target": "Only intake_check is available in this release."})
-        source = get_object_or_404(SourceFile, pk=request.data.get("source_file"), revision=revision)
+        try:
+            source_id = uuid.UUID(str(request.data.get("source_file")))
+        except ValueError as exc:
+            raise ValidationError({"source_file": "Choose a drawing of this revision."}) from exc
+        source = get_object_or_404(SourceFile, pk=source_id, revision=revision)
         key = _idempotency_key(request, fallback=f"intake:{source.pk}:{uuid.uuid4()}")
         job, created = services.create_job(
             organization=revision.organization, kind=Job.Kind.INTAKE_CHECK, idempotency_key=key,

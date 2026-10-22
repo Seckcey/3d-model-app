@@ -142,3 +142,15 @@ def test_job_api_cancel_requires_engineer(shop_a):
     assert response.status_code == 200 and response.json()["state"] == "canceled"
     detail = shop_a["client"].get(f"/api/v1/jobs/{job.pk}/").json()
     assert [e["message"] for e in detail["events"]] == ["Queued", "Canceled"]
+
+
+def test_rerun_intake_rejects_malformed_file_id(shop_a):
+    client, org = shop_a["client"], shop_a["org"]
+    project = client.post("/api/v1/projects/", {"organization": str(org.pk), "name": "Rerun"},
+                          format="json").json()
+    part = client.post("/api/v1/parts/", {"project": project["id"], "part_number": "R-1"},
+                       format="json").json()
+    revision = client.post(f"/api/v1/parts/{part['id']}/revisions/", {}, format="json").json()
+    response = client.post(f"/api/v1/revisions/{revision['id']}/jobs/",
+                           {"target": "intake_check", "source_file": "abc"}, format="json")
+    assert response.status_code == 400

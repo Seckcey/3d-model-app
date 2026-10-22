@@ -26,7 +26,7 @@ October 22, 2026 · plan reference: [BUILD_PLAN.md](BUILD_PLAN.md), Phase 1 (plu
 
 | Suite | Count | Where |
 |---|---|---|
-| API (PostgreSQL in CI) | 75 | `apps/api/tests` |
+| API (PostgreSQL in CI) | 78 | `apps/api/tests` |
 | Geometry engine | 36 | `workers/cad/tests` (inside the production CAD image in CI) |
 | Web | 10 | `apps/web/src/test` + type-check + production build |
 | End-to-end | 1 flow | `infra/scripts/smoke.py` through nginx, then restart, backup and restore drill |

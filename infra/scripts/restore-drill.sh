@@ -34,6 +34,7 @@ detail="unknown error"
 finish() {
   drill_compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$drill"
+  detail="$(printf '%s' "$detail" | tr -cd 'A-Za-z0-9 ._:,/()=+-')"
   live_compose exec -T api python manage.py record_backup --kind restore_drill --status "$result" \
     --location "$file" --details "{\"detail\": \"$detail\"}" >/dev/null 2>&1 || true
   if [ "$result" = "succeeded" ]; then log "RESTORE DRILL PASSED: $detail"; else log "RESTORE DRILL FAILED: $detail"; exit 1; fi

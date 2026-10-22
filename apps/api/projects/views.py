@@ -115,7 +115,8 @@ class PartViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = _org_filter(self.request, Part.objects.select_related("project", "project__customer"))
+        qs = _org_filter(self.request, Part.objects.select_related("project", "project__customer")
+                         .prefetch_related("revisions"))
         params = self.request.query_params
         qs = filter_by(qs, params, ["project"], ["project"])
         q = params.get("q")
@@ -139,7 +140,8 @@ class PartViewSet(viewsets.ModelViewSet):
     def revisions(self, request, pk=None):
         part = self.get_object()
         if request.method == "GET":
-            revisions = part.revisions.select_related("part__project", "organization")
+            revisions = part.revisions.select_related("part__project", "organization").prefetch_related(
+                Prefetch("source_files", queryset=SourceFile.objects.prefetch_related("artifacts")))
             return Response(RevisionSerializer(revisions, many=True).data)
         require_capability(request, part.organization_id, Capability.EDIT)
         serializer = RevisionSerializer(data=request.data)
@@ -286,7 +288,7 @@ class SourceFileView(APIView):
         require_capability(request, source.organization_id, Capability.EDIT)
         pages = request.data.get("selected_pages")
         if (not isinstance(pages, list) or not pages
-                or not all(isinstance(p, int) and 1 <= p <= source.page_count for p in pages)):
+                or not all(isinstance(p, int) and not isinstance(p, bool) and 1 <= p <= source.page_count for p in pages)):
             raise ValidationError({"selected_pages": "Choose at least one valid page number."})
         source.selected_pages = sorted(set(pages))
         source.save(update_fields=["selected_pages", "updated_at"])
@@ -306,7 +308,8 @@ class SourceFileDownloadView(APIView):
 
 
 class ArtifactDownloadView(APIView):
-    PREVIEW_KINDS = {Artifact.Kind.THUMBNAIL, Artifact.Kind.PAGE_IMAGE, Artifact.Kind.GLB}
+    PREVIEW_KINDS = {Artifact.Kind.THUMBNAIL, Artifact.Kind.PAGE_IMAGE}
+    INLINE_KINDS = PREVIEW_KINDS | {Artifact.Kind.GLB}
 
     def get(self, request, pk):
         artifact = get_object_or_404(
@@ -316,7 +319,7 @@ class ArtifactDownloadView(APIView):
         # source-download rule until a revision is released (Phase 4).
         if artifact.kind not in self.PREVIEW_KINDS and artifact.released_at is None:
             require_capability(request, artifact.organization_id, Capability.DOWNLOAD_SOURCES)
-        inline = request.query_params.get("inline") == "1" and artifact.kind in self.PREVIEW_KINDS
+        inline = request.query_params.get("inline") == "1" and artifact.kind in self.INLINE_KINDS
         if not inline:
             audit.record("artifact.downloaded", request=request, organization=artifact.organization,
                          target=artifact, kind=artifact.kind)
