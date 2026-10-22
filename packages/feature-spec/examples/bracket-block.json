@@ -1,0 +1,37 @@
+{
+  "schema": "feature-spec/1",
+  "family": "prismatic",
+  "part": {"number": "BENCH-BRKT-02", "revision": "A", "name": "Angle bracket"},
+  "source": {"kind": "benchmark", "note": "Synthetic Phase 0 reference part; not a customer drawing."},
+  "units": "in",
+  "projection": "third_angle",
+  "material": {"designation": "6061-T6 aluminum", "density_g_cm3": 2.70},
+  "datums": {"A": "bottom face", "B": "left face", "C": "front face"},
+  "dimensions": {
+    "D1": {"nominal": 4.000, "upper": 0.010, "lower": -0.010, "kind": "linear", "text": "4.000", "tolerance_source": "title_block"},
+    "D2": {"nominal": 2.000, "upper": 0.010, "lower": -0.010, "kind": "linear", "text": "2.000", "tolerance_source": "title_block"},
+    "D3": {"nominal": 2.000, "upper": 0.010, "lower": -0.010, "kind": "linear", "text": "2.000", "tolerance_source": "title_block"},
+    "D4": {"nominal": 0.750, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": ".750 LEG", "tolerance_source": "title_block"},
+    "D5": {"nominal": 0.750, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": ".750 BASE", "tolerance_source": "title_block"},
+    "D6": {"nominal": 0.250, "upper": 0.010, "lower": 0.0, "kind": "depth", "text": "POCKET ↧ .250 +.010/-.000", "tolerance_source": "explicit"},
+    "D7": {"nominal": 1.500, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": "1.500", "tolerance_source": "title_block"},
+    "D8": {"nominal": 1.000, "upper": 0.005, "lower": -0.005, "kind": "linear", "text": "1.000", "tolerance_source": "title_block"},
+    "D9": {"nominal": 0.125, "upper": 0.0, "lower": -0.010, "kind": "radius", "text": "4X R.125 MAX", "tolerance_source": "explicit"},
+    "D10": {"nominal": 0.328, "upper": 0.005, "lower": 0.0, "kind": "linear", "text": "SLOT .328 +.005/-.000 THRU", "tolerance_source": "explicit"},
+    "D11": {"nominal": 0.125, "upper": 0.010, "lower": -0.010, "kind": "radius", "text": "R.125 INSIDE", "tolerance_source": "title_block"}
+  },
+  "features": [
+    {"id": "F1", "type": "block", "size": [{"dim": "D1"}, {"dim": "D2"}, {"dim": "D3"}], "dims": ["D1", "D2", "D3"]},
+    {"id": "S1", "type": "step", "x": [{"dim": "D4"}, {"dim": "D1"}], "y": [0, {"dim": "D2"}], "floor_z": {"dim": "D5"}, "dims": ["D4", "D5"]},
+    {"id": "R1", "type": "fillet_edge", "along": "y", "at": [{"dim": "D4"}, {"dim": "D5"}], "radius": {"dim": "D11"}, "dims": ["D11"]},
+    {"id": "P1", "type": "pocket", "face": "top", "from": {"dim": "D5"}, "center": [2.375, 1.0],
+     "size": [{"dim": "D7"}, {"dim": "D8"}], "depth": {"dim": "D6"}, "corner_radius": {"dim": "D9"}, "dims": ["D6", "D7", "D8", "D9"]},
+    {"id": "SL1", "type": "slot", "face": "top", "from": {"dim": "D5"}, "start": [3.5, 0.6], "end": [3.5, 1.4],
+     "width": {"dim": "D10"}, "depth": "thru", "dims": ["D10"]},
+    {"id": "H1", "type": "hole", "face": "left", "hole_type": "tapped", "positions": [[0.5, 1.375], [1.5, 1.375]],
+     "diameter": 0.159, "depth": 0.50, "point_angle": 118,
+     "thread": {"callout": "2X #10-32 UNF-2B ↧ .38", "major": 0.190, "minor": 0.156, "tap_drill": 0.159, "form_tap_drill": 0.172, "depth": 0.38}}
+  ],
+  "notes": ["UNLESS OTHERWISE SPECIFIED: .XX ±.01 .XXX ±.005"],
+  "expect": {"bbox": [4.0, 2.0, 2.0], "solids": 1, "volume": 7.229399, "assumes": {"variant": "nominal", "tapped_hole_model": "tap_drill"}}
+}

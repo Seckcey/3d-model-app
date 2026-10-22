@@ -1,0 +1,6 @@
+{% autoescape off %}{% block content %}{% endblock content %}
+
+--
+{{ product_name|default:"Blueprint to CAD" }}
+{{ public_url }}
+{% endautoescape %}

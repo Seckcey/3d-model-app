@@ -1,0 +1,8 @@
+{% extends "account/email/base_message.txt" %}
+{% block content %}{% autoescape off %}Someone asked for a sign-in code for {{ email }}, but there is no account with this address.
+{% if signup_mode == "open" %}
+You can create a workspace at {{ public_url }}/login.
+{% else %}
+Accounts are created by invitation. Ask the owner of your shop's workspace to invite this address.
+{% endif %}
+If this was not you, you can ignore this message.{% endautoescape %}{% endblock content %}

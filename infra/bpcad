@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Blueprint to CAD operations helper (installed as /usr/local/bin/bpcad).
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "$here/scripts/common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: bpcad <command> [args]
+
+  status                 Containers, health and version
+  logs [service]         Follow logs (api, extract-worker, cad-worker, scheduler, proxy, postgres)
+  restart [service]      Restart everything or one service
+  update                 Pull the latest code and images, migrate, restart (keeps data)
+  backup                 Encrypted backup now
+  restore-drill [file]   Restore a backup into an isolated stack and verify it
+  restore <file>         Replace LIVE data with a backup (asks first)
+  outbox [--code|--link] [--to EMAIL]
+                         Show emails kept on the server when SMTP is not configured
+  selftest EMAIL         End-to-end check through the proxy (outbox email mode only)
+  manage <args>          Run a Django management command
+  compose <args>         Run docker compose with this deployment's settings
+EOF
+}
+
+cmd="${1:-help}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+  help|-h|--help) usage; exit 0 ;;
+  update) exec bash "$here/install.sh" --yes "$@" ;;
+esac
+
+load_env
+case "$cmd" in
+  status)
+    compose ps
+    echo
+    printf 'Version: %s\n' "${GIT_SHA:-unknown}"
+    curl -fsS "http://127.0.0.1:${HTTP_PORT:-9999}/readyz" && echo || echo "readyz: not reachable"
+    ;;
+  logs) compose logs --tail=200 -f "$@" ;;
+  restart) compose restart "$@" ;;
+  stop) compose stop ;;
+  start) compose up -d ;;
+  backup) exec "$here/scripts/backup.sh" ;;
+  restore-drill) exec "$here/scripts/restore-drill.sh" "$@" ;;
+  restore) exec "$here/scripts/restore.sh" "$@" ;;
+  outbox) compose exec -T api python manage.py outbox "$@" ;;
+  manage) compose exec api python manage.py "$@" ;;
+  compose) compose "$@" ;;
+  selftest)
+    email="${1:?usage: bpcad selftest EMAIL}"
+    compose exec -T api python manage.py bootstrap --email "$email" --org "${ORG_NAME:-8 West Ventures}" >/dev/null
+    compose run --rm --no-deps -T \
+      --volume "$here/scripts/smoke.py:/usr/local/share/bpcad-smoke.py:ro" \
+      api python /usr/local/share/bpcad-smoke.py setup --public-url "$PUBLIC_URL" --email "$email"
+    ;;
+  *) usage; exit 2 ;;
+esac

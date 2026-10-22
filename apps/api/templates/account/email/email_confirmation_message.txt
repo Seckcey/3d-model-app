@@ -1,0 +1,8 @@
+{% extends "account/email/base_message.txt" %}
+{% block content %}{% autoescape off %}{% if code %}Your email verification code is:
+
+    {{ code }}
+
+Enter it in the browser window where you started. It expires in 10 minutes.{% else %}Confirm this address by opening: {{ activate_url }}{% endif %}
+
+If you did not ask for this, you can ignore this message.{% endautoescape %}{% endblock content %}
