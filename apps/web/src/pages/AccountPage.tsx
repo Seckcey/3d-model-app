@@ -74,14 +74,13 @@ export function AccountPage({ me }: { me: Me }) {
         {sessions.isLoading ? <div className="card-body"><Spinner /></div> : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Device</th><th>IP address</th><th>Signed in</th><th>Last seen</th><th /></tr></thead>
+              <thead><tr><th>Device</th><th>IP address</th><th>Signed in</th><th /></tr></thead>
               <tbody>
                 {sessions.data?.map((s) => (
                   <tr key={s.id}>
                     <td>{describeAgent(s.user_agent)} {s.is_current && <Badge tone="ok">This device</Badge>}</td>
                     <td className="mono small">{s.ip}</td>
                     <td className="subtle">{formatDateTime(s.created_at)}</td>
-                    <td className="subtle">{formatDateTime(s.last_seen_at ?? null)}</td>
                     <td className="right">{!s.is_current && <Button size="sm" onClick={() => end([s.id])}>Sign out</Button>}</td>
                   </tr>
                 ))}

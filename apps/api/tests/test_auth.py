@@ -5,6 +5,7 @@ import time
 
 import pytest
 from django.core import mail
+from django.core.cache import cache
 from django.test import Client
 
 from tests.helpers import latest_code, make_org, make_user
@@ -131,10 +132,17 @@ def test_signup_closed_without_invitation(db):
     assert response.status_code == 403
 
 
+def code_login(client, email):
+    cache.clear()  # the per-address code limit would block the second device
+    request_code(client, email)
+    assert post(client, f"{AUTH}/code/confirm", {"code": latest_code(email)}).status_code == 200
+
+
 def test_user_can_end_another_session(member):
-    laptop, tablet = Client(), Client()
+    laptop = Client(HTTP_USER_AGENT="Mozilla/5.0 (Macintosh) Chrome/140")
+    tablet = Client(HTTP_USER_AGENT="Mozilla/5.0 (iPad) Safari/605")
     for client in (laptop, tablet):
-        client.force_login(member, backend="django.contrib.auth.backends.ModelBackend")
+        code_login(client, member.email)
         assert client.get("/api/v1/me/").status_code == 200
     sessions = laptop.get(f"{AUTH}/sessions").json()["data"]
     assert len(sessions) == 2

@@ -50,8 +50,8 @@ def test_vector_pdf_intake(shop_a, make_revision):
     assert "C" in hints["revision_candidates"]
     assert hints["material_candidates"][0].startswith("6061-T6")
     assert "anodize" in hints["outside_processes"]
-    assert "1/4-20 UNC" in " ".join(hints["thread_callouts"])
-    assert any(t.startswith("M6x1.0") for t in hints["thread_callouts"])
+    assert "1/4-20 UNC-2B" in hints["thread_callouts"]
+    assert "M6x1.0 - 6H" in hints["thread_callouts"]
     assert hints["general_tolerance_block"] is True
     assert report["export_control"]["status"] == "none_found"
     kinds = sorted(Artifact.objects.filter(source_file=source).values_list("kind", "variant"))
@@ -70,8 +70,14 @@ def test_export_control_marking_locks_external_ai(shop_a, make_revision):
     revision = make_revision("C", external_ai=True)
     source, job = upload_and_run(shop_a["client"], revision, make_pdf([ITAR_DRAWING]))
     assert job.state == Job.State.SUCCEEDED
-    kinds = {m["kind"] for m in source.intake_report["export_control"]["markings"]}
-    assert {"ITAR", "EXPORT WARNING", "DISTRIBUTION STATEMENT"} <= kinds
+    markings = source.intake_report["export_control"]["markings"]
+    kinds = [m["kind"] for m in markings]
+    assert {"ITAR", "EXPORT WARNING", "DISTRIBUTION STATEMENT"} <= set(kinds)
+    assert len(kinds) == len(set(kinds))  # one entry per kind per page
+    itar = next(m for m in markings if m["kind"] == "ITAR")
+    text = " ".join(" ".join(ITAR_DRAWING).split())
+    at = text.find(itar["text"])
+    assert at >= 0 and (at == 0 or text[at - 1] == " ")  # snippet starts on a whole word
     row = PartRevision.objects.get(pk=revision["id"])
     assert row.export_control == ExportControl.DETECTED
     assert row.external_ai_allowed is False and row.effective_external_ai is False

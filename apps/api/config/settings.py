@@ -156,7 +156,8 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "var" / "dev.sqlite3",
+            "NAME": env("SQLITE_PATH", str(BASE_DIR / "var" / "dev.sqlite3")),
+            "OPTIONS": {"timeout": 20, "init_command": "PRAGMA journal_mode=WAL;"},
         }
     }
 
@@ -290,7 +291,9 @@ HEADLESS_FRONTEND_URLS = {
     "account_reset_password_from_key": f"{PUBLIC_URL}/login",
     "account_signup": f"{PUBLIC_URL}/login",
 }
-USERSESSIONS_TRACK_ACTIVITY = True
+# Sessions are recorded at sign-in; per-request "last seen" tracking would write
+# to the database on every API call (the job pages poll), so it stays off.
+USERSESSIONS_TRACK_ACTIVITY = False
 
 # --- REST framework -------------------------------------------------------------
 REST_FRAMEWORK = {

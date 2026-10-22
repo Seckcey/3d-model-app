@@ -30,3 +30,6 @@ celerybeat-schedule*
 .idea/
 .vscode/
 *.swp
+
+# Local tool config
+.claude/

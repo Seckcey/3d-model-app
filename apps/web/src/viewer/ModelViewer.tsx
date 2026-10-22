@@ -42,6 +42,16 @@ export default function ModelViewer({ url, label }: { url: string; label?: strin
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    // The wheel scrolls the page until the user clicks into the viewer.
+    controls.enableZoom = false;
+    const engage = () => {
+      controls.enableZoom = true;
+    };
+    const release = () => {
+      controls.enableZoom = false;
+    };
+    renderer.domElement.addEventListener("pointerdown", engage);
+    renderer.domElement.addEventListener("pointerleave", release);
 
     let frame = 0;
     const animate = () => {
@@ -73,13 +83,19 @@ export default function ModelViewer({ url, label }: { url: string; label?: strin
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-        const radius = Math.max(size.x, size.y, size.z) || 0.1;
-        const grid = new THREE.GridHelper(radius * 3, 12, 0x8796aa, 0xc5cfdb);
-        grid.position.set(center.x, box.min.y - radius * 0.002, center.z);
+        const longest = Math.max(size.x, size.y, size.z) || 0.1;
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        const grid = new THREE.GridHelper(longest * 2, 10, 0x8796aa, 0xc5cfdb);
+        grid.position.set(center.x, box.min.y - longest * 0.002, center.z);
         scene.add(grid);
-        camera.position.set(center.x + radius * 1.4, center.y + radius * 1.1, center.z + radius * 1.6);
-        camera.near = radius / 1000;
-        camera.far = radius * 100;
+        // Fit the bounding sphere to the narrower field of view, viewed from front-right-above.
+        const vertical = THREE.MathUtils.degToRad(camera.fov) / 2;
+        const horizontal = Math.atan(Math.tan(vertical) * camera.aspect);
+        const distance = (sphere.radius / Math.sin(Math.min(vertical, horizontal))) * 1.05;
+        const direction = new THREE.Vector3(0.9, 0.75, 1.1).normalize();
+        camera.position.copy(center).addScaledVector(direction, distance);
+        camera.near = longest / 1000;
+        camera.far = longest * 100;
         camera.updateProjectionMatrix();
         controls.target.copy(center);
         controls.update();
@@ -110,6 +126,8 @@ export default function ModelViewer({ url, label }: { url: string; label?: strin
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", engage);
+      renderer.domElement.removeEventListener("pointerleave", release);
       controls.dispose();
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -130,7 +148,7 @@ export default function ModelViewer({ url, label }: { url: string; label?: strin
           <span className="muted">{error ?? "Loading 3D preview…"}</span>
         </div>
       )}
-      <div className="overlay">{label ?? "Drag to orbit · scroll to zoom · display mesh only"}</div>
+      <div className="overlay">{label ?? "Drag to orbit · click, then scroll to zoom · display mesh only"}</div>
     </div>
   );
 }

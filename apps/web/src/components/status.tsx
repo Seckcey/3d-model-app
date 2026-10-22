@@ -57,6 +57,6 @@ export function AiBadge({ allowed }: { allowed: boolean }) {
 }
 
 export const JOB_KIND_LABELS: Record<string, string> = {
-  intake_check: "Drawing intake check",
+  intake_check: "Intake check",
   geometry_benchmark: "Geometry benchmark",
 };

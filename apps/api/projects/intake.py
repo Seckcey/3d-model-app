@@ -69,8 +69,8 @@ OUTSIDE_PROCESSES = {
     "paint": r"\bpaint\b|\bprimer\b",
 }
 THREAD_PATTERN = re.compile(
-    r"(?:#\d{1,2}|\d+/\d+|\d+(?:\.\d+)?)\s*-\s*\d{1,3}\s*UN[CFEJ]?R?\b"  # 1/4-20 UNC
-    r"|\bM\d{1,2}(?:\.\d+)?\s*[xX×]\s*\d(?:\.\d+)?\b"  # M6x1.0
+    r"(?:#\d{1,2}|\d+/\d+|\d+(?:\.\d+)?)\s*-\s*\d{1,3}\s*UN[CFEJ]?R?\b(?:\s*-\s*[123][AB]\b)?"  # 1/4-20 UNC-2B
+    r"|\bM\d{1,2}(?:\.\d+)?\s*[xX×]\s*\d(?:\.\d+)?\b(?:\s*-\s*\d[gGhH](?:\d[gGhH])?\b)?"  # M6x1.0-6H
     r"|\b\d+/\d+\s*-\s*\d+\s*N(?:PT|PTF)\b",  # 1/8-27 NPT
 )
 REVISION_PATTERN = re.compile(r"\bREV(?:ISION)?\b\.?\s*[:#]?\s*([A-Z]{1,2}|\d{1,2})\b")
@@ -134,15 +134,29 @@ def _fit(image: Image.Image, max_px: int) -> Image.Image:
                         Image.LANCZOS)
 
 
+def _snippet(text: str, start: int, end: int) -> str:
+    """Context around a match, trimmed to whole words."""
+    lo, hi = max(0, start - 50), min(len(text), end + 70)
+    if lo > 0:
+        space = text.find(" ", lo, start)
+        lo = space + 1 if space != -1 else start
+    if hi < len(text):
+        space = text.rfind(" ", end, hi)
+        hi = space if space != -1 else end
+    return " ".join(text[lo:hi].split())[:160]
+
+
 def scan_markings(text: str, page: int) -> list[dict]:
-    found = []
+    """One finding per marking kind per page (several patterns can name the same kind)."""
+    found: dict[str, dict] = {}
     for kind, severity, pattern in MARKING_PATTERNS:
-        for match in pattern.finditer(text):
-            start = max(0, match.start() - 40)
-            snippet = " ".join(text[start: match.end() + 60].split())[:140]
-            found.append({"kind": kind, "severity": severity, "page": page, "text": snippet})
-            break
-    return found
+        if kind in found:
+            continue
+        match = pattern.search(text)
+        if match:
+            found[kind] = {"kind": kind, "severity": severity, "page": page,
+                           "text": _snippet(text, match.start(), match.end())}
+    return list(found.values())
 
 
 def drawing_hints(text: str) -> dict:
