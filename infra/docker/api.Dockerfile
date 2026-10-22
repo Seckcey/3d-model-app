@@ -29,7 +29,9 @@ ENV APP_VERSION=${APP_VERSION} \
     STAGING_ROOT=/data/files/staging \
     OUTBOX_DIR=/data/outbox
 
-RUN DJANGO_SECRET_KEY=collectstatic-only python manage.py collectstatic --noinput >/dev/null
+RUN DJANGO_SECRET_KEY=collectstatic-only python manage.py collectstatic --noinput >/dev/null \
+ && chown -R app:app /app/staticfiles \
+ && chmod -R u+rwX,g+rX,o+rX /app/staticfiles
 
 USER app
 EXPOSE 8000

@@ -8,7 +8,10 @@ COPY apps/web/ ./
 RUN npm run build
 
 FROM nginx:stable-alpine
-RUN rm -f /etc/nginx/conf.d/default.conf
+# Stored drawings are group-readable by gid 10001 (the API's group); nginx serves
+# them for authenticated downloads, so its worker user joins that group.
+RUN addgroup -g 10001 -S app && addgroup nginx app \
+ && rm -f /etc/nginx/conf.d/default.conf
 COPY infra/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY infra/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /web/dist /usr/share/nginx/html
